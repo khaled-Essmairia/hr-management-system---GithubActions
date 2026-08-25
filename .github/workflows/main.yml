@@ -7,63 +7,124 @@ on:
 
 jobs:
   build-deploy:
-    name: Build and Deploy Spring boot for beginner
+    name: Build and Deploy Spring Boot
     runs-on: ubuntu-latest
+
     services:
-
-
-     sqlserver:
-       image: mcr.microsoft.com/mssql/server:2022-latest
-       env:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
           ACCEPT_EULA: Y
-          MSSQL_SA_PASSWORD: "MyStrongPassword123"
-       ports:
-       - 1433:1433
-       options: >-
-                      --health-cmd "/opt/mssql-tools18/bin/sqlcmd
-                      -S localhost,1433
-                      -U sa
-                      -P 'MyStrongPassword123'
-                      -C
-                      -Q 'SELECT 1'"
-                      --health-interval 10s
-                      --health-timeout 5s
-                      --health-retries 10
+          MSSQL_SA_PASSWORD: MyStrongPassword123
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd
+          -S localhost,1433
+          -U sa
+          -P 'MyStrongPassword123'
+          -C
+          -Q 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 20s
+
     steps:
+      # --------------------------------
+      # Checkout
+      # --------------------------------
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
+      # --------------------------------
+      # Setup Java
+      # --------------------------------
       - name: Setup JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
-          distribution: 'corretto'
-          java-version: 17
+          distribution: corretto
+          java-version: '17'
+          cache: maven
 
+      # --------------------------------
+      # Wait for SQL Server
+      # --------------------------------
+      - name: Wait for SQL Server
+        run: |
+          echo "Waiting for SQL Server..."
+
+          for i in {1..30}; do
+            if /opt/mssql-tools18/bin/sqlcmd \
+              -S localhost,1433 \
+              -U sa \
+              -P "MyStrongPassword123" \
+              -C \
+              -Q "SELECT 1" > /dev/null 2>&1
+            then
+              echo "SQL Server is ready!"
+              break
+            fi
+
+            echo "SQL Server is not ready yet..."
+            sleep 2
+          done
+
+      # --------------------------------
+      # Create test database
+      # --------------------------------
+      - name: Create test database
+        run: |
+          /opt/mssql-tools18/bin/sqlcmd \
+            -S localhost,1433 \
+            -U sa \
+            -P "MyStrongPassword123" \
+            -C \
+            -Q "IF DB_ID('hr_dev_db1') IS NULL CREATE DATABASE hr_dev_db1"
+
+      # --------------------------------
+      # Run tests
+      # --------------------------------
       - name: Unit Tests
-        run: mvn -B test --file pom.xml -Dspring.profiles.active=test
+        run: |
+          mvn -B test \
+            --file pom.xml \
+            -Dspring.profiles.active=test
 
+      # --------------------------------
+      # Build application
+      # --------------------------------
       - name: Build the application
         run: |
-          mvn clean
           mvn clean package -DskipTests
-          
+
+      # --------------------------------
+      # Build Docker image
+      # --------------------------------
       - name: Build Docker Image
-        uses: docker/build-push-action@v2
+        uses: docker/build-push-action@v6
         with:
           context: .
           dockerfile: Dockerfile
           push: false
-          tags: "${{ secrets.DOCKER_HUB_USERNAME }}/spring-boot-for-beginners:today"
+          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/spring-boot-for-beginners:today
+
+      # --------------------------------
+      # Login to Docker Hub
+      # --------------------------------
       - name: Login to Docker Hub
-        uses: docker/login-action@v1
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
+      # --------------------------------
+      # Push Docker image
+      # --------------------------------
       - name: Push to Docker Hub
-        uses: docker/build-push-action@v2
+        uses: docker/build-push-action@v6
         with:
           context: .
           dockerfile: Dockerfile
           push: true
-          tags: "${{ secrets.DOCKER_HUB_USERNAME }}/spring-boot-for-test:today"	  
+          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/spring-boot-for-test:today

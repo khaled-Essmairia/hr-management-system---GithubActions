@@ -598,6 +598,179 @@ Future versions may include:
 
 ---
 
+
+# Spring Boot Database Configuration: Local vs GitHub Actions
+
+This project uses **two different `application.properties` files**:
+
+* One for the normal application running locally.
+* One for tests running in GitHub Actions.
+
+This allows the application to use the local SQL Server Express instance during development while GitHub Actions uses a SQL Server Docker container.
+
+## Project Structure
+
+```text
+src/
+├── main/
+│   └── resources/
+│       └── application.properties
+│
+└── test/
+    └── resources/
+        └── application.properties
+```
+
+### 1. Local Application Configuration
+
+The file:
+
+```text
+src/main/resources/application.properties
+```
+
+is used when running the application normally, for example:
+
+```bash
+mvn spring-boot:run
+```
+
+It connects to the local SQL Server Express instance:
+
+```properties
+spring.datasource.url=jdbc:sqlserver://localhost;instanceName=SQLEXPRESS;databaseName=hr_dev_db1;encrypt=true;trustServerCertificate=true
+spring.datasource.username=sa
+spring.datasource.password=123456
+spring.datasource.driver-class-name=com.microsoft.sqlserver.jdbc.SQLServerDriver
+```
+
+The connection is:
+
+```text
+Spring Boot
+    ↓
+application.properties
+    ↓
+localhost\SQLEXPRESS
+    ↓
+Local SQL Server Express
+    ↓
+hr_dev_db1
+```
+
+---
+
+## 2. GitHub Actions Test Configuration
+
+The file:
+
+```text
+src/test/resources/application.properties
+```
+
+is used when running tests with:
+
+```bash
+mvn test
+```
+
+For GitHub Actions, the application connects to SQL Server running in a Docker service on port `1433`:
+
+```properties
+spring.datasource.url=jdbc:sqlserver://localhost:1433;databaseName=hr_dev_db1;encrypt=false;trustServerCertificate=true
+spring.datasource.username=sa
+spring.datasource.password=YourStrongPassword123!
+spring.datasource.driver-class-name=com.microsoft.sqlserver.jdbc.SQLServerDriver
+
+spring.jpa.database-platform=org.hibernate.dialect.SQLServer2012Dialect
+spring.jpa.hibernate.ddl-auto=update
+```
+
+The connection is:
+
+```text
+GitHub Actions
+    ↓
+mvn test
+    ↓
+src/test/resources/application.properties
+    ↓
+localhost:1433
+    ↓
+SQL Server Docker Container
+    ↓
+hr_dev_db1
+```
+
+---
+
+## 3. Why Use Two Configurations?
+
+The local computer and GitHub Actions runner have different SQL Server environments.
+
+### Local Development
+
+```text
+localhost\SQLEXPRESS
+```
+
+This refers to the SQL Server Express instance installed on the developer's computer.
+
+### GitHub Actions
+
+```text
+localhost:1433
+```
+
+This refers to the SQL Server Docker container started by GitHub Actions.
+
+Therefore, the application should not use `SQLEXPRESS` in the GitHub Actions environment.
+
+---
+
+## 4. Configuration Summary
+
+| Environment          | Configuration                               | SQL Server             |
+| -------------------- | ------------------------------------------- | ---------------------- |
+| Local application    | `src/main/resources/application.properties` | `localhost\SQLEXPRESS` |
+| GitHub Actions tests | `src/test/resources/application.properties` | `localhost:1433`       |
+
+The final workflow is:
+
+```text
+┌─────────────────────────────┐
+│      Local Development      │
+└──────────────┬──────────────┘
+               ↓
+mvn spring-boot:run
+               ↓
+src/main/resources/
+application.properties
+               ↓
+localhost\SQLEXPRESS
+               ↓
+Local SQL Server Express
+
+
+┌─────────────────────────────┐
+│       GitHub Actions        │
+└──────────────┬──────────────┘
+               ↓
+          mvn test
+               ↓
+src/test/resources/
+application.properties
+               ↓
+localhost:1433
+               ↓
+SQL Server Docker Container
+               ↓
+          hr_dev_db1
+```
+
+> **Important:** The SQL Server password used by the GitHub Actions Docker container must match the password configured for the test environment. For security, use a GitHub Actions Secret instead of committing the password directly to the repository.
+
+
 ## 👨‍💻 Author
 
 **Khaled Essmairia**
