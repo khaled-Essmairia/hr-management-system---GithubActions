@@ -46,6 +46,4 @@ jobs:
           context: .
           dockerfile: Dockerfile
           push: true
-          tags: "${{ secrets.DOCKER_HUB_USERNAME }}/spring-boot-for-test:today"
-		  
-		  
+          tags: "${{ secrets.DOCKER_HUB_USERNAME }}/spring-boot-for-test:today"	  
