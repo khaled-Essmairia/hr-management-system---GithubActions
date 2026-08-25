@@ -31,15 +31,10 @@ jobs:
           --health-start-period 20s
 
     steps:
-      # --------------------------------
-      # Checkout
-      # --------------------------------
+
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # --------------------------------
-      # Setup Java
-      # --------------------------------
       - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
@@ -47,15 +42,13 @@ jobs:
           java-version: '17'
           cache: maven
 
-      # --------------------------------
-      # Wait for SQL Server
-      # --------------------------------
       - name: Wait for SQL Server
         run: |
           echo "Waiting for SQL Server..."
 
           for i in {1..30}; do
-            if /opt/mssql-tools18/bin/sqlcmd \
+            if docker exec ${{ job.services.sqlserver.id }} \
+              /opt/mssql-tools18/bin/sqlcmd \
               -S localhost,1433 \
               -U sa \
               -P "MyStrongPassword123" \
@@ -70,37 +63,26 @@ jobs:
             sleep 2
           done
 
-      # --------------------------------
-      # Create test database
-      # --------------------------------
       - name: Create test database
         run: |
-          /opt/mssql-tools18/bin/sqlcmd \
+          docker exec ${{ job.services.sqlserver.id }} \
+            /opt/mssql-tools18/bin/sqlcmd \
             -S localhost,1433 \
             -U sa \
             -P "MyStrongPassword123" \
             -C \
             -Q "IF DB_ID('hr_dev_db1') IS NULL CREATE DATABASE hr_dev_db1"
 
-      # --------------------------------
-      # Run tests
-      # --------------------------------
       - name: Unit Tests
         run: |
           mvn -B test \
             --file pom.xml \
             -Dspring.profiles.active=test
 
-      # --------------------------------
-      # Build application
-      # --------------------------------
       - name: Build the application
         run: |
           mvn clean package -DskipTests
 
-      # --------------------------------
-      # Build Docker image
-      # --------------------------------
       - name: Build Docker Image
         uses: docker/build-push-action@v6
         with:
@@ -109,18 +91,12 @@ jobs:
           push: false
           tags: ${{ secrets.DOCKER_HUB_USERNAME }}/spring-boot-for-beginners:today
 
-      # --------------------------------
-      # Login to Docker Hub
-      # --------------------------------
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
-      # --------------------------------
-      # Push Docker image
-      # --------------------------------
       - name: Push to Docker Hub
         uses: docker/build-push-action@v6
         with:
